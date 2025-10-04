@@ -1,29 +1,38 @@
 import { useState, useEffect } from 'react';
 
-const useFetch = (fetchFn, dependencies = []) => {
+export const useFetch = (fetchFunction, dependencies = []) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    let isMounted = true;
+
     const fetchData = async () => {
       try {
         setLoading(true);
-        const result = await fetchFn();
-        setData(result);
-        setError(null);
+        const response = await fetchFunction();
+        if (isMounted) {
+          setData(response.data.data);
+          setError(null);
+        }
       } catch (err) {
-        setError(err.message);
-        setData(null);
+        if (isMounted) {
+          setError(err.response?.data?.message || err.message);
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
     fetchData();
+
+    return () => {
+      isMounted = false;
+    };
   }, dependencies);
 
-  return { data, loading, error, refetch: fetchFn };
+  return { data, loading, error, setData };
 };
-
-export default useFetch;

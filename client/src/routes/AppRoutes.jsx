@@ -5,31 +5,21 @@ import DashboardPage from '../pages/DashboardPage';
 import StudentsPage from '../pages/StudentsPage';
 import CoursesPage from '../pages/CoursesPage';
 import ReportsPage from '../pages/ReportsPage';
-import LoginPage from '../pages/LoginPage';
-import NotFoundPage from '../pages/NotFoundPage';
-import useAuth from '../hooks/useAuth';
+import LiveAttendancePage from '../pages/LiveAttendancePage';
+import AddCoursePage from '../pages/AddCoursePage';
 
 const AppRoutes = () => {
-  const { user, loading } = useAuth();
-
-  if (loading) {
-    return <div>Loading...</div>;
-  }
-
-  if (!user) {
-    return <LoginPage />;
-  }
-
   return (
-    <MainLayout>
-      <Routes>
-        <Route path="/" element={<DashboardPage />} />
-        <Route path="/students" element={<StudentsPage />} />
-        <Route path="/courses" element={<CoursesPage />} />
-        <Route path="/reports" element={<ReportsPage />} />
-        <Route path="*" element={<NotFoundPage />} />
-      </Routes>
-    </MainLayout>
+    <Routes>
+      <Route path="/" element={<MainLayout />}>
+        <Route index element={<DashboardPage />} />
+        <Route path="students" element={<StudentsPage />} />
+        <Route path="courses" element={<CoursesPage />} />
+        <Route path="courses/add" element={<AddCoursePage />} />
+        <Route path="reports" element={<ReportsPage />} />
+        <Route path="attendance/live/:courseId" element={<LiveAttendancePage />} />
+      </Route>
+    </Routes>
   );
 };
 

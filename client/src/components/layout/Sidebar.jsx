@@ -1,52 +1,49 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  Users, 
-  BookOpen, 
-  FileText 
-} from 'lucide-react';
+import { NavLink } from 'react-router-dom';
+import { LayoutDashboard, Users, BookOpen, FileText, Settings } from 'lucide-react';
 
 const Sidebar = () => {
-  const location = useLocation();
-  
-  const navigation = [
-    { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-    { name: 'Students', href: '/students', icon: Users },
-    { name: 'Courses', href: '/courses', icon: BookOpen },
-    { name: 'Reports', href: '/reports', icon: FileText },
+  const navItems = [
+    { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+    { to: '/students', icon: Users, label: 'Students' },
+    { to: '/courses', icon: BookOpen, label: 'Courses' },
+    { to: '/reports', icon: FileText, label: 'Reports' },
+    { to: '/settings', icon: Settings, label: 'Settings' },
   ];
 
   return (
-    <div className="h-full w-64 bg-gray-800">
-      <div className="flex flex-col h-full">
-        <div className="flex-1 flex flex-col pt-5 pb-4 overflow-y-auto">
-          <nav className="mt-5 flex-1 px-2 space-y-1">
-            {navigation.map((item) => {
-              const isActive = location.pathname === item.href;
-              return (
-                <Link
-                  key={item.name}
-                  to={item.href}
-                  className={`${
-                    isActive
-                      ? 'bg-gray-900 text-white'
-                      : 'text-gray-300 hover:bg-gray-700 hover:text-white'
-                  } group flex items-center px-2 py-2 text-sm font-medium rounded-md`}
-                >
-                  <item.icon
-                    className={`${
-                      isActive ? 'text-gray-300' : 'text-gray-400 group-hover:text-gray-300'
-                    } mr-3 flex-shrink-0 h-6 w-6`}
-                  />
-                  {item.name}
-                </Link>
-              );
-            })}
-          </nav>
+    <aside className="w-64 bg-gray-900 text-white min-h-screen fixed left-0 top-0 z-50">
+      <div className="p-6">
+        <div className="flex items-center space-x-2">
+          <div className="w-10 h-10 bg-primary-600 rounded-lg flex items-center justify-center">
+            <span className="text-xl font-bold">A</span>
+          </div>
+          <div>
+            <h1 className="text-lg font-bold">Attendance</h1>
+            <p className="text-xs text-gray-400">Management System</p>
+          </div>
         </div>
       </div>
-    </div>
+
+      <nav className="mt-6">
+        {navItems.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            className={({ isActive }) =>
+              `flex items-center space-x-3 px-6 py-3 transition-colors ${
+                isActive
+                  ? 'bg-primary-600 text-white border-r-4 border-primary-400'
+                  : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+              }`
+            }
+          >
+            <item.icon size={20} />
+            <span className="font-medium">{item.label}</span>
+          </NavLink>
+        ))}
+      </nav>
+    </aside>
   );
 };
 

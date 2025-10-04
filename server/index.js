@@ -1,19 +1,45 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const connectDB = require('./config/db');
 
+// Import routes
+const studentRoutes = require('./routes/studentRoutes');
+const attendanceRoutes = require('./routes/attendanceRoutes');
+const courseRoutes = require('./routes/courseRoutes');
+
 const app = express();
 
-// Connect to Database
+// Connect to database
 connectDB();
 
-// Init Middleware
+// Middleware
 app.use(cors());
-app.use(express.json({ extended: false }));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// Define Routes
-app.use('/api', require('./routes/api'));
+// Routes
+app.use('/api/students', studentRoutes);
+app.use('/api/attendance', attendanceRoutes);
+app.use('/api/courses', courseRoutes);
 
-const PORT = process.env.PORT || 5001;
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'OK', message: 'Server is running' });
+});
 
-app.listen(PORT, () => console.log(`Server started on port ${PORT}`));
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ 
+    success: false, 
+    message: 'Something went wrong!',
+    error: process.env.NODE_ENV === 'development' ? err.message : undefined
+  });
+});
+
+const PORT = process.env.PORT || 5000;
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
