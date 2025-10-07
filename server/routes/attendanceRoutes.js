@@ -6,6 +6,7 @@ const attendanceController = require('../controllers/attendanceController');
 router.get('/', attendanceController.getAttendance);
 router.post('/', attendanceController.markAttendance);
 router.get('/stats', attendanceController.getAttendanceStats);
+router.get('/live', attendanceController.getLiveAttendance);
 router.delete('/:id', attendanceController.deleteAttendance);
 
 // Live attendance tracking routes

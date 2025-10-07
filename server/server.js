@@ -6,6 +6,7 @@ const fileUpload = require('express-fileupload');
 const courses = require('./routes/courses');
 const students = require('./routes/students');
 const photos = require('./routes/photos');
+const attendance = require('./routes/attendance');
 
 const app = express();
 const PORT = process.env.PORT || 3070;
@@ -21,7 +22,10 @@ mongoose.connect('mongodb://localhost:27017/attendance_system', {
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use(fileUpload({
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB max file size
+  createParentPath: true
+}));
 
 // Static file serving
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -30,6 +34,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/courses', courses);
 app.use('/api/students', students);
 app.use('/api/photos', photos);
+app.use('/api/attendance', attendance);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

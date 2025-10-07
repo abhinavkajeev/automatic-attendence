@@ -68,7 +68,7 @@ export const coursesAPI = {
 // Photos API
 export const photosAPI = {
   upload: (studentId, formData) => {
-    return api.post(`/api/photos/upload/${studentId}`, formData, {
+    return axios.post(`${API_BASE_URL}/api/photos/upload/${studentId}`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },

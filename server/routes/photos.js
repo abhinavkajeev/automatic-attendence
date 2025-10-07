@@ -1,43 +1,34 @@
 const express = require('express');
 const router = express.Router();
-const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const Student = require('../models/Student');
 
-// Configure multer for file upload
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    const dir = path.join(__dirname, '../uploads/students');
+// Create directories if they don't exist
+const setupDirectories = () => {
+  const dirs = [
+    path.join(__dirname, '../uploads/students'),
+    path.join(__dirname, '../../client/public/models')
+  ];
+  
+  dirs.forEach(dir => {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    cb(null, dir);
-  },
-  filename: function (req, file, cb) {
-    // Save with studentId as filename
-    const studentId = req.body.studentId;
-    const ext = path.extname(file.originalname);
-    cb(null, `${studentId}${ext}`);
-  }
-});
+  });
+};
 
-const upload = multer({
-  storage: storage,
-  limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB max file size
-  },
-  fileFilter: (req, file, cb) => {
-    if (!file.originalname.match(/\.(jpg|jpeg|png)$/)) {
-      return cb(new Error('Only image files are allowed!'), false);
-    }
-    cb(null, true);
-  }
-});
+// Setup directories on module load
+setupDirectories();
 
 // Upload student photo
 router.post('/upload/:studentId', async (req, res) => {
   try {
+    console.log('Photo upload request received for student:', req.params.studentId);
+    console.log('Files received:', req.files);
+    
     if (!req.files || !req.files.photo) {
+      console.log('No photo file found in request');
       return res.status(400).json({
         success: false,
         message: 'No photo uploaded'
@@ -53,13 +44,24 @@ router.post('/upload/:studentId', async (req, res) => {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
 
-    // Get file extension and generate filename
-    const ext = path.extname(photo.name);
-    const filename = `${studentId}${ext}`;
+    // Get file extension and generate filename - always use .jpg
+    const filename = `${studentId}.jpg`;
     const filepath = path.join(uploadDir, filename);
 
-    // Move the file
+    // Move the file to server uploads
     await photo.mv(filepath);
+    
+    console.log(`Photo saved to: ${filepath}`);
+
+    // Copy the file to client's public models directory
+    const clientModelsDir = path.join(__dirname, '../../client/public/models');
+    if (!fs.existsSync(clientModelsDir)) {
+      fs.mkdirSync(clientModelsDir, { recursive: true });
+    }
+    const clientFilepath = path.join(clientModelsDir, filename);
+    fs.copyFileSync(filepath, clientFilepath);
+    
+    console.log(`Photo copied to client models: ${clientFilepath}`);
 
     // Update student record
     const student = await Student.findOneAndUpdate(
@@ -73,8 +75,13 @@ router.post('/upload/:studentId', async (req, res) => {
     );
 
     if (!student) {
-      // Remove uploaded file if student not found
-      fs.unlinkSync(filepath);
+      // Remove uploaded files if student not found
+      if (fs.existsSync(filepath)) {
+        fs.unlinkSync(filepath);
+      }
+      if (fs.existsSync(clientFilepath)) {
+        fs.unlinkSync(clientFilepath);
+      }
       return res.status(404).json({
         success: false,
         message: 'Student not found'
@@ -91,6 +98,24 @@ router.post('/upload/:studentId', async (req, res) => {
     });
   } catch (error) {
     console.error('Error uploading photo:', error);
+    
+    // Clean up any partially uploaded files
+    if (typeof filepath !== 'undefined' && fs.existsSync(filepath)) {
+      try {
+        fs.unlinkSync(filepath);
+      } catch (cleanupError) {
+        console.error('Error cleaning up server file:', cleanupError);
+      }
+    }
+    
+    if (typeof clientFilepath !== 'undefined' && fs.existsSync(clientFilepath)) {
+      try {
+        fs.unlinkSync(clientFilepath);
+      } catch (cleanupError) {
+        console.error('Error cleaning up client file:', cleanupError);
+      }
+    }
+    
     res.status(500).json({
       success: false,
       message: 'Error uploading photo',

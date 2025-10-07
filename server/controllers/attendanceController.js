@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Attendance = require('../models/Attendance');
 const Student = require('../models/Student');
 const Course = require('../models/Course');
@@ -80,9 +81,10 @@ exports.getAttendanceStats = async (req, res) => {
   try {
     const { courseId, startDate, endDate } = req.query;
     
-    const matchQuery = {
-      course: mongoose.Types.ObjectId(courseId)
-    };
+    const matchQuery = {};
+    if (courseId) {
+      matchQuery.course = new mongoose.Types.ObjectId(courseId);
+    }
 
     if (startDate || endDate) {
       matchQuery.date = {};
@@ -167,6 +169,32 @@ exports.getByCourse = async (req, res) => {
     res.json({ success: true, data: attendance });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Get live attendance feed
+exports.getLiveAttendance = async (req, res) => {
+  try {
+    // This endpoint can be used for live attendance monitoring
+    // For now, return recent attendance records
+    const recentAttendance = await Attendance.find()
+      .populate('course', 'name')
+      .populate('students', 'studentId name')
+      .sort({ date: -1 })
+      .limit(10);
+
+    res.json({ 
+      success: true, 
+      data: recentAttendance,
+      message: 'Live attendance feed retrieved successfully'
+    });
+  } catch (error) {
+    console.error('Error fetching live attendance:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error fetching live attendance',
+      error: error.message 
+    });
   }
 };
 

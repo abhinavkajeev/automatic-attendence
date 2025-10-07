@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { studentsAPI } from '../services/api';
+import { studentsAPI, photosAPI } from '../services/api';
 import Card from './common/Card';
 import Button from './common/Button';
 
@@ -13,7 +13,7 @@ const AddStudentForm = ({ onClose, onSuccess }) => {
     phoneNumber: '',
     email: ''
   });
-
+  const [photo, setPhoto] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -31,11 +31,38 @@ const AddStudentForm = ({ onClose, onSuccess }) => {
     setError(null);
 
     try {
-      await studentsAPI.create(formData);
-      onSuccess?.();
-      onClose?.();
+      if (!photo) {
+        throw new Error('Photo is required');
+      }
+
+      // Prepare the photo FormData
+      const formDataWithPhoto = new FormData();
+      formDataWithPhoto.append('photo', photo);
+
+      // First create the student - map fullName to name for backend
+      const studentResponse = await studentsAPI.create({
+        ...formData,
+        name: formData.fullName, // Map fullName to name for backend
+        hasEnrolledFace: true
+      });
+      
+      console.log('Student created successfully:', studentResponse.data);
+      
+      // Then upload the photo using the student ID
+      try {
+        await photosAPI.upload(formData.studentId, formDataWithPhoto);
+        console.log('Photo uploaded successfully');
+        onSuccess?.();
+        onClose?.();
+      } catch (photoError) {
+        console.error('Photo upload error:', photoError);
+        // Show specific error for photo upload failure
+        setError('Student was saved but there was an error uploading the photo. Please try updating the photo later.');
+        // Don't close the form so user can try again
+      }
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to create student');
+      console.error('Error creating student:', err);
+      setError(err.response?.data?.error || err.message || 'Failed to create student');
     } finally {
       setLoading(false);
     }
@@ -161,6 +188,27 @@ const AddStudentForm = ({ onClose, onSuccess }) => {
                 className="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500"
                 required
               />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Photo <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => setPhoto(e.target.files[0])}
+                className="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500"
+                required
+              />
+              <p className="mt-1 text-sm text-gray-500">
+                Please upload a clear front-facing photo for face recognition. Photo will be saved as {formData.studentId}.jpg
+              </p>
+              {photo && (
+                <p className="mt-1 text-sm text-green-600">
+                  ✓ Photo selected: {photo.name}
+                </p>
+              )}
             </div>
           </div>
 

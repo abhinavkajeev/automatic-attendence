@@ -8,8 +8,9 @@ from PIL import Image
 from io import BytesIO
 
 class StudentEnrollment:
-    def __init__(self, embeddings_file='student_embeddings.pkl'):
+    def __init__(self, embeddings_file='student_embeddings.pkl', models_dir='../client/public/models'):
         self.embeddings_file = embeddings_file
+        self.models_dir = models_dir
         self.known_face_encodings = []
         self.known_student_ids = []
         self.load_embeddings()
@@ -29,9 +30,17 @@ class StudentEnrollment:
         with open(self.embeddings_file, 'wb') as f:
             pickle.dump(data, f)
     
-    def process_enrollment_photo(self, photo_path, student_id):
-        """Process a new student's enrollment photo and add to embeddings"""
+    def process_enrollment_photo(self, student_id):
+        """Process a new student's enrollment photo from models directory and add to embeddings"""
         try:
+            # Construct path to photo in models directory
+            photo_path = os.path.join(self.models_dir, f'{student_id}.jpg')
+            if not os.path.exists(photo_path):
+                return {
+                    'success': False,
+                    'message': f'Photo not found for student ID: {student_id}'
+                }
+                
             # Load and process image
             image = face_recognition.load_image_file(photo_path)
             face_locations = face_recognition.face_locations(image)
