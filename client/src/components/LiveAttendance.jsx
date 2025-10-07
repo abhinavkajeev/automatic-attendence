@@ -74,21 +74,31 @@ const LiveAttendance = () => {
 
     setIsProcessing(true);
     try {
-      // Create a canvas to capture the frame
+      // Create a canvas to capture the frame with higher resolution
       const canvas = document.createElement('canvas');
       canvas.width = videoRef.current.videoWidth;
       canvas.height = videoRef.current.videoHeight;
       const ctx = canvas.getContext('2d');
-      ctx.drawImage(videoRef.current, 0, 0);
+      
+      // Apply image smoothing for better quality
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      
+      // Draw the video frame
+      ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
 
-      // Convert canvas to blob
+      console.log(`Processing frame: ${canvas.width}x${canvas.height}`);
+
+      // Convert canvas to blob with higher quality
       const blob = await new Promise(resolve => {
-        canvas.toBlob(resolve, 'image/jpeg');
+        canvas.toBlob(resolve, 'image/jpeg', 0.9); // Higher quality JPEG
       });
+
+      console.log(`Frame blob size: ${blob.size} bytes`);
 
       // Create form data
       const formData = new FormData();
-      formData.append('photo', blob);
+      formData.append('photo', blob, 'frame.jpg');
 
       // Send to CV Engine for face recognition
       const response = await fetch('http://localhost:5001/verify', {

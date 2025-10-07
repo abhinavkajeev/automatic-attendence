@@ -56,14 +56,52 @@ student_data = load_student_data()
 
 def get_face_encoding(image):
     """Get face encoding using OpenCV"""
+    # Preprocess image for better face detection
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    faces = face_cascade.detectMultiScale(gray, 1.3, 5)
+    
+    # Apply histogram equalization for better contrast
+    gray = cv2.equalizeHist(gray)
+    
+    # Try multiple detection parameters for better face detection
+    faces = face_cascade.detectMultiScale(
+        gray, 
+        scaleFactor=1.1, 
+        minNeighbors=3, 
+        minSize=(30, 30),
+        flags=cv2.CASCADE_SCALE_IMAGE
+    )
+    
     if len(faces) == 0:
+        # Try with more lenient parameters
+        faces = face_cascade.detectMultiScale(
+            gray, 
+            scaleFactor=1.05, 
+            minNeighbors=2, 
+            minSize=(20, 20),
+            flags=cv2.CASCADE_SCALE_IMAGE
+        )
+    
+    if len(faces) == 0:
+        # Try with very lenient parameters
+        faces = face_cascade.detectMultiScale(
+            gray, 
+            scaleFactor=1.03, 
+            minNeighbors=1, 
+            minSize=(15, 15),
+            flags=cv2.CASCADE_SCALE_IMAGE
+        )
+    
+    if len(faces) == 0:
+        print(f"No faces detected in image of size: {image.shape}")
         return None
+    
+    print(f"Detected {len(faces)} faces")
     
     # Get the largest face
     largest_face = max(faces, key=lambda r: r[2] * r[3])
     x, y, w, h = largest_face
+    
+    print(f"Largest face: x={x}, y={y}, w={w}, h={h}")
     
     # Extract face ROI and resize
     face_roi = image[y:y+h, x:x+w]
@@ -71,11 +109,12 @@ def get_face_encoding(image):
     
     return face_encoding, (x, y, w, h)
 
-def compare_faces(known_encoding, face_encoding, tolerance=0.6):
+def compare_faces(known_encoding, face_encoding, tolerance=0.7):
     """Compare face encodings using Euclidean distance"""
     if known_encoding is None or face_encoding is None:
         return False
     dist = np.linalg.norm(known_encoding - face_encoding)
+    print(f"Face distance: {dist}, tolerance: {tolerance}")
     return dist < tolerance
 
 # Initialize systems
@@ -239,6 +278,56 @@ def video_feed():
     return Response(generate_frames(),
                    mimetype='multipart/x-mixed-replace; boundary=frame')
 
+@app.route('/test-face-detection', methods=['POST'])
+def test_face_detection():
+    """Test endpoint to check if faces can be detected in an image"""
+    if 'photo' not in request.files:
+        return jsonify({
+            'success': False,
+            'message': 'No photo file provided'
+        }), 400
+    
+    photo = request.files['photo']
+    
+    if photo.filename == '':
+        return jsonify({
+            'success': False,
+            'message': 'No photo selected'
+        }), 400
+    
+    try:
+        # Read image file
+        img = Image.open(photo.stream)
+        img_array = np.array(img)
+        img_cv = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
+        
+        print(f"Testing face detection on image of size: {img_cv.shape}")
+        
+        # Get face encoding
+        result = get_face_encoding(img_cv)
+        if result is None:
+            return jsonify({
+                'success': False,
+                'message': 'No face detected in photo',
+                'image_size': img_cv.shape
+            }), 400
+        
+        face_encoding, (x, y, w, h) = result
+        
+        return jsonify({
+            'success': True,
+            'message': 'Face detected successfully',
+            'image_size': img_cv.shape,
+            'face_coordinates': {'x': int(x), 'y': int(y), 'w': int(w), 'h': int(h)},
+            'face_encoding_size': len(face_encoding)
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Server error: {str(e)}'
+        }), 500
+
 @app.route('/verify', methods=['POST'])
 def verify_face():
     if 'photo' not in request.files:
@@ -260,6 +349,9 @@ def verify_face():
         img = Image.open(photo.stream)
         img_array = np.array(img)
         img_cv = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
+        
+        print(f"Processing image of size: {img_cv.shape}")
+        print(f"Number of enrolled students: {len(student_data['embeddings'])}")
         
         # Get face encoding
         result = get_face_encoding(img_cv)
@@ -291,6 +383,7 @@ def verify_face():
                 'message': 'No faces recognized in photo'
             }
         
+        print(f"Verification result: {result}")
         return jsonify(result)
         
     except Exception as e:
