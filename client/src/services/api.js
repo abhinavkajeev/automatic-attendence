@@ -49,7 +49,7 @@ export const attendanceAPI = {
   getLive: () => api.get('/attendance/live'),
   // Real-time attendance endpoints
   markByFaceRecognition: (courseId, recognizedIds) => 
-    api.post('/attendance/mark/face-recognition', { courseId, studentIds: recognizedIds }),
+    api.post('/api/attendance/mark/face-recognition', { courseId, studentIds: recognizedIds }),
   streamLiveAttendance: (courseId) => {
     const eventSource = new EventSource(`${API_BASE_URL}/attendance/stream/${courseId}`);
     return eventSource;

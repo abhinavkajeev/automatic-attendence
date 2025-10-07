@@ -34,6 +34,9 @@ app.use('/api/attendance', attendanceRoutes);
 app.use('/api/courses', courseRoutes);
 app.use('/api/photos', photos);
 
+// Legacy routes for backward compatibility
+app.use('/attendance', attendanceRoutes);
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'Server is running' });

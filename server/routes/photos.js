@@ -52,6 +52,9 @@ router.post('/upload/:studentId', async (req, res) => {
     
     console.log(`Photo saved to: ${filepath}`);
 
+    // Note: CV Engine enrollment will be handled separately
+    // The photo is saved to cv-engine directory for CV engine to process
+
     // Update student record
     const student = await Student.findOneAndUpdate(
       { studentId: studentId },

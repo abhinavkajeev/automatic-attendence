@@ -7,6 +7,7 @@ const LiveAttendance = () => {
   const [stream, setStream] = useState(null);
   const [markedStudents, setMarkedStudents] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isMirrored, setIsMirrored] = useState(true);
   const videoRef = useRef(null);
   const eventSourceRef = useRef(null);
   const processingTimeoutRef = useRef(null);
@@ -89,9 +90,23 @@ const LiveAttendance = () => {
       const formData = new FormData();
       formData.append('photo', blob);
 
-      // Send to server for face recognition
-      const response = await attendanceAPI.markByFaceRecognition(courseId);
-      console.log('Face recognition response:', response);
+      // Send to CV Engine for face recognition
+      const response = await fetch('http://localhost:5001/verify', {
+        method: 'POST',
+        body: formData
+      });
+
+      const result = await response.json();
+      console.log('CV Engine face recognition response:', result);
+
+      // If faces are recognized, mark attendance
+      if (result.success && result.recognized && result.recognized.length > 0) {
+        const recognizedStudentIds = result.recognized.map(r => r.student_id);
+        
+        // Send recognized student IDs to server to mark attendance
+        const attendanceResponse = await attendanceAPI.markByFaceRecognition(courseId, recognizedStudentIds);
+        console.log('Attendance marked:', attendanceResponse);
+      }
 
     } catch (error) {
       console.error('Error processing frame:', error);
@@ -107,7 +122,18 @@ const LiveAttendance = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Webcam Feed */}
         <div className="bg-gray-100 p-4 rounded-lg">
-          <h2 className="text-lg font-semibold mb-2">Camera Feed</h2>
+          <div className="flex justify-between items-center mb-2">
+            <h2 className="text-lg font-semibold">Camera Feed</h2>
+            <label className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                checked={isMirrored}
+                onChange={(e) => setIsMirrored(e.target.checked)}
+                className="rounded"
+              />
+              <span className="text-sm">Mirror</span>
+            </label>
+          </div>
           <div className="relative aspect-video">
             <video
               ref={videoRef}
@@ -115,6 +141,7 @@ const LiveAttendance = () => {
               playsInline
               muted
               className="w-full h-full object-cover rounded"
+              style={{ transform: isMirrored ? 'scaleX(-1)' : 'none' }}
             />
             {isProcessing && (
               <div className="absolute top-2 right-2 bg-yellow-500 text-white px-2 py-1 rounded text-sm">
