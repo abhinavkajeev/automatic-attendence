@@ -26,7 +26,7 @@ app.use(fileUpload({
 }));
 
 // Static file serving
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/cv-engine/uploads', express.static(path.join(__dirname, '../cv-engine/uploads')));
 
 // Routes
 app.use('/api/students', studentRoutes);

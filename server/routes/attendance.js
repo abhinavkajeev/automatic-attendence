@@ -62,7 +62,7 @@ router.post('/mark/face-recognition', upload.single('image'), async (req, res) =
     // Compare each detected face with student photos
     for (const face of detectedFaces) {
       for (const student of course.students) {
-        const studentPhotoPath = path.join(__dirname, `../uploads/students/${student.studentId}.jpg`);
+        const studentPhotoPath = path.join(__dirname, `../../cv-engine/uploads/students/${student.studentId}.jpg`);
         if (fs.existsSync(studentPhotoPath)) {
           const isMatch = await faceRecognition.compareFaces(face, studentPhotoPath);
           if (isMatch) {

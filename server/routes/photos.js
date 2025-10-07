@@ -7,8 +7,7 @@ const Student = require('../models/Student');
 // Create directories if they don't exist
 const setupDirectories = () => {
   const dirs = [
-    path.join(__dirname, '../uploads/students'),
-    path.join(__dirname, '../../client/public/models')
+    path.join(__dirname, '../../cv-engine/uploads/students')
   ];
   
   dirs.forEach(dir => {
@@ -37,7 +36,7 @@ router.post('/upload/:studentId', async (req, res) => {
 
     const photo = req.files.photo;
     const studentId = req.params.studentId;
-    const uploadDir = path.join(__dirname, '../uploads/students');
+    const uploadDir = path.join(__dirname, '../../cv-engine/uploads/students');
 
     // Create directory if it doesn't exist
     if (!fs.existsSync(uploadDir)) {
@@ -48,20 +47,10 @@ router.post('/upload/:studentId', async (req, res) => {
     const filename = `${studentId}.jpg`;
     const filepath = path.join(uploadDir, filename);
 
-    // Move the file to server uploads
+    // Move the file to cv-engine uploads
     await photo.mv(filepath);
     
     console.log(`Photo saved to: ${filepath}`);
-
-    // Copy the file to client's public models directory
-    const clientModelsDir = path.join(__dirname, '../../client/public/models');
-    if (!fs.existsSync(clientModelsDir)) {
-      fs.mkdirSync(clientModelsDir, { recursive: true });
-    }
-    const clientFilepath = path.join(clientModelsDir, filename);
-    fs.copyFileSync(filepath, clientFilepath);
-    
-    console.log(`Photo copied to client models: ${clientFilepath}`);
 
     // Update student record
     const student = await Student.findOneAndUpdate(
@@ -69,18 +58,15 @@ router.post('/upload/:studentId', async (req, res) => {
       { 
         hasEnrolledFace: true,
         lastFaceUpdate: new Date(),
-        photoUrl: `/uploads/students/${filename}`
+        photoUrl: `/cv-engine/uploads/students/${filename}`
       },
       { new: true }
     );
 
     if (!student) {
-      // Remove uploaded files if student not found
+      // Remove uploaded file if student not found
       if (fs.existsSync(filepath)) {
         fs.unlinkSync(filepath);
-      }
-      if (fs.existsSync(clientFilepath)) {
-        fs.unlinkSync(clientFilepath);
       }
       return res.status(404).json({
         success: false,
@@ -93,7 +79,7 @@ router.post('/upload/:studentId', async (req, res) => {
       message: 'Photo uploaded successfully',
       data: {
         filename,
-        photoUrl: `/uploads/students/${filename}`
+        photoUrl: `/cv-engine/uploads/students/${filename}`
       }
     });
   } catch (error) {
@@ -104,15 +90,7 @@ router.post('/upload/:studentId', async (req, res) => {
       try {
         fs.unlinkSync(filepath);
       } catch (cleanupError) {
-        console.error('Error cleaning up server file:', cleanupError);
-      }
-    }
-    
-    if (typeof clientFilepath !== 'undefined' && fs.existsSync(clientFilepath)) {
-      try {
-        fs.unlinkSync(clientFilepath);
-      } catch (cleanupError) {
-        console.error('Error cleaning up client file:', cleanupError);
+        console.error('Error cleaning up uploaded file:', cleanupError);
       }
     }
     
@@ -127,7 +105,7 @@ router.post('/upload/:studentId', async (req, res) => {
 // Get student photo
 router.get('/:studentId/photo', (req, res) => {
   const { studentId } = req.params;
-  const photoPath = path.join(__dirname, `../uploads/students/${studentId}.jpg`);
+  const photoPath = path.join(__dirname, `../../cv-engine/uploads/students/${studentId}.jpg`);
   
   if (fs.existsSync(photoPath)) {
     res.sendFile(photoPath);
