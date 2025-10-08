@@ -8,6 +8,7 @@ const LiveAttendance = () => {
   const [markedStudents, setMarkedStudents] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isMirrored, setIsMirrored] = useState(true);
+  const [lastMarkedStudent, setLastMarkedStudent] = useState(null);
   const videoRef = useRef(null);
   const eventSourceRef = useRef(null);
   const processingTimeoutRef = useRef(null);
@@ -116,6 +117,28 @@ const LiveAttendance = () => {
         // Send recognized student IDs to server to mark attendance
         const attendanceResponse = await attendanceAPI.markByFaceRecognition(courseId, recognizedStudentIds);
         console.log('Attendance marked:', attendanceResponse);
+        
+        // Update local state to show marked students
+        const newMarkedStudents = result.recognized.map(r => ({
+          id: r.student_id,
+          name: `Student ${r.student_id}`, // You might want to fetch actual names from the server
+          time: new Date().toLocaleTimeString(),
+          confidence: r.confidence
+        }));
+        
+        // Add to marked students list (avoid duplicates)
+        setMarkedStudents(prev => {
+          const existingIds = prev.map(s => s.id);
+          const uniqueNewStudents = newMarkedStudents.filter(s => !existingIds.includes(s.id));
+          
+          // Show notification for newly marked students
+          if (uniqueNewStudents.length > 0) {
+            setLastMarkedStudent(uniqueNewStudents[0]);
+            setTimeout(() => setLastMarkedStudent(null), 3000); // Hide after 3 seconds
+          }
+          
+          return [...prev, ...uniqueNewStudents];
+        });
       }
 
     } catch (error) {
@@ -128,6 +151,13 @@ const LiveAttendance = () => {
   return (
     <div className="p-4">
       <h1 className="text-2xl font-bold mb-4">Live Attendance - Course {courseId}</h1>
+      
+      {/* Success Notification */}
+      {lastMarkedStudent && (
+        <div className="fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-50 animate-bounce">
+          ✅ Student {lastMarkedStudent.id} marked successfully!
+        </div>
+      )}
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Webcam Feed */}
@@ -176,15 +206,28 @@ const LiveAttendance = () => {
                 </tr>
               </thead>
               <tbody>
-                {markedStudents.map((record) => (
-                  <tr key={record._id} className="border-b border-gray-200">
-                    <td className="p-2">{record.student.studentId}</td>
-                    <td className="p-2">{record.student.name}</td>
-                    <td className="p-2">
-                      {new Date(record.createdAt).toLocaleTimeString()}
+                {markedStudents.length === 0 ? (
+                  <tr>
+                    <td colSpan="3" className="p-4 text-center text-gray-500">
+                      No students marked yet
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  markedStudents.map((student, index) => (
+                    <tr key={`${student.id}-${index}`} className="border-b border-gray-200 hover:bg-gray-50">
+                      <td className="p-2 font-medium">{student.id}</td>
+                      <td className="p-2">{student.name}</td>
+                      <td className="p-2 text-sm text-gray-600">
+                        {student.time}
+                        {student.confidence && (
+                          <span className="ml-2 text-xs bg-green-100 text-green-800 px-1 rounded">
+                            {Math.round(student.confidence * 100)}%
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

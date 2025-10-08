@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const path = require('path');
 const fs = require('fs');
+const axios = require('axios');
+const FormData = require('form-data');
 const Student = require('../models/Student');
 
 // Create directories if they don't exist
@@ -52,8 +54,34 @@ router.post('/upload/:studentId', async (req, res) => {
     
     console.log(`Photo saved to: ${filepath}`);
 
-    // Note: CV Engine enrollment will be handled separately
-    // The photo is saved to cv-engine directory for CV engine to process
+    // Call CV Engine enrollment API to process the face
+    try {
+      console.log('Calling CV Engine enrollment API...');
+      
+      // Create form data for CV engine
+      const cvFormData = new FormData();
+      cvFormData.append('photo', fs.createReadStream(filepath));
+      cvFormData.append('student_id', studentId);
+      cvFormData.append('force_enroll', 'true'); // Force enrollment to handle similar faces
+      
+      // Call CV engine enrollment endpoint
+      const cvResponse = await axios.post('http://localhost:5001/enroll', cvFormData, {
+        headers: {
+          ...cvFormData.getHeaders(),
+        },
+        timeout: 30000 // 30 second timeout
+      });
+      
+      console.log('CV Engine enrollment response:', cvResponse.data);
+      
+      if (!cvResponse.data.success) {
+        console.warn('CV Engine enrollment failed:', cvResponse.data.message);
+        // Continue with student update even if CV enrollment fails
+      }
+    } catch (cvError) {
+      console.error('Error calling CV Engine enrollment:', cvError.message);
+      // Continue with student update even if CV enrollment fails
+    }
 
     // Update student record
     const student = await Student.findOneAndUpdate(
