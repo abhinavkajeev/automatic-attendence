@@ -19,12 +19,17 @@ class StudentEnrollment:
         if os.path.exists(self.embeddings_file):
             with open(self.embeddings_file, 'rb') as f:
                 data = pickle.load(f)
-                self.known_face_encodings = data['encodings']
-                self.known_student_ids = data['student_ids']
+                # Handle both old and new key formats for backward compatibility
+                if 'encodings' in data:
+                    self.known_face_encodings = data['encodings']
+                    self.known_student_ids = data['student_ids']
+                else:
+                    self.known_face_encodings = data['embeddings']
+                    self.known_student_ids = data['student_ids']
     
     def save_embeddings(self):
         data = {
-            'encodings': self.known_face_encodings,
+            'embeddings': self.known_face_encodings,
             'student_ids': self.known_student_ids
         }
         with open(self.embeddings_file, 'wb') as f:
@@ -109,8 +114,7 @@ if __name__ == "__main__":
     # Test the enrollment process
     enrollment = StudentEnrollment()
     
-    test_photo = input("Enter path to test photo: ")
     test_student_id = input("Enter student ID: ")
     
-    result = enrollment.process_enrollment_photo(test_photo, test_student_id)
+    result = enrollment.process_enrollment_photo(test_student_id)
     print(result)
