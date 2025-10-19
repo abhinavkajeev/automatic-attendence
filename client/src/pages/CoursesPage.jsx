@@ -5,12 +5,15 @@ import { BookOpen, Plus, Clock, User, Calendar, ArrowRight, Star } from 'lucide-
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import Spinner from '../components/common/Spinner';
+import CourseDetailsModal from '../components/CourseDetailsModal';
 import { coursesAPI } from '../services/api';
 
 const CoursesPage = () => {
   const navigate = useNavigate();
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selectedCourse, setSelectedCourse] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
     fetchCourses();
@@ -25,6 +28,28 @@ const CoursesPage = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleViewDetails = (course) => {
+    setSelectedCourse(course);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setSelectedCourse(null);
+  };
+
+  const handleCourseDeleted = (courseId) => {
+    setCourses(prev => prev.filter(course => course._id !== courseId));
+    setIsModalOpen(false);
+    setSelectedCourse(null);
+  };
+
+  const handleCourseUpdated = (updatedCourse) => {
+    setCourses(prev => prev.map(course => 
+      course._id === updatedCourse._id ? updatedCourse : course
+    ));
   };
 
   const containerVariants = {
@@ -229,6 +254,7 @@ const CoursesPage = () => {
           <div className={`p-5 pt-3 border-t border-gray-100`}>
             <div className="grid grid-cols-2 gap-3">
               <motion.button
+                onClick={() => handleViewDetails(course)}
                 className="px-4 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-900 text-sm font-bold transition-colors flex items-center justify-center gap-2 group/btn"
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.97 }}
@@ -370,6 +396,15 @@ const CoursesPage = () => {
           background: #9ca3af;
         }
       `}</style>
+
+      {/* Course Details Modal */}
+      <CourseDetailsModal
+        course={selectedCourse}
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+        onCourseDeleted={handleCourseDeleted}
+        onCourseUpdated={handleCourseUpdated}
+      />
     </motion.div>
   );
 };
