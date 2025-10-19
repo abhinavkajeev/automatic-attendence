@@ -15,6 +15,7 @@ import {
   TrendingUp
 } from 'lucide-react';
 import { attendanceAPI, studentsAPI } from '../services/api';
+import { registerStream, registerVideoElement, unregisterStream, unregisterVideoElement, forceCleanupAllCameraResources } from '../utils/cameraCleanup';
 
 const LiveAttendance = () => {
   const { courseId } = useParams();
@@ -27,23 +28,65 @@ const LiveAttendance = () => {
   const [sessionTime, setSessionTime] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
   const videoRef = useRef(null);
+  const streamRef = useRef(null);
   const eventSourceRef = useRef(null);
   const processingTimeoutRef = useRef(null);
+
+  // Cleanup function
+  const cleanup = () => {
+    console.log('Cleaning up camera and resources...');
+    
+    // Clean up camera stream
+    if (streamRef.current) {
+      unregisterStream(streamRef.current);
+      streamRef.current.getTracks().forEach(track => {
+        track.stop();
+        console.log('Stopped track:', track.kind);
+      });
+      streamRef.current = null;
+    }
+    
+    // Clean up video element
+    if (videoRef.current) {
+      unregisterVideoElement(videoRef.current);
+      videoRef.current.srcObject = null;
+      videoRef.current.pause();
+    }
+    
+    // Clean up event source
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+    
+    // Clean up processing interval
+    if (processingTimeoutRef.current) {
+      clearInterval(processingTimeoutRef.current);
+      processingTimeoutRef.current = null;
+    }
+    
+    // Reset states
+    setIsConnected(false);
+    setStream(null);
+    
+    // Force cleanup of all camera resources
+    forceCleanupAllCameraResources();
+  };
 
   useEffect(() => {
     initWebcam();
     initAttendanceStream();
 
+    // Add beforeunload listener for cleanup
+    const handleBeforeUnload = () => {
+      cleanup();
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
     return () => {
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-      }
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-      }
-      if (processingTimeoutRef.current) {
-        clearInterval(processingTimeoutRef.current);
-      }
+      cleanup();
+      window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, [courseId]);
 
@@ -72,11 +115,16 @@ const LiveAttendance = () => {
           facingMode: 'user'
         } 
       });
+      
+      // Store stream in ref for proper cleanup
+      streamRef.current = mediaStream;
+      registerStream(mediaStream);
       setStream(mediaStream);
       setIsConnected(true);
 
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
+        registerVideoElement(videoRef.current);
       }
 
       processingTimeoutRef.current = setInterval(processFrame, 5000);
@@ -247,7 +295,14 @@ const LiveAttendance = () => {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-center gap-4">
               <motion.button
-                onClick={() => navigate(-1)}
+                onClick={() => {
+                  cleanup();
+                  // Additional cleanup before navigation
+                  setTimeout(() => {
+                    forceCleanupAllCameraResources();
+                    navigate(-1);
+                  }, 100);
+                }}
                 className="w-10 h-10 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
                 whileHover={{ scale: 1.05, x: -3 }}
                 whileTap={{ scale: 0.95 }}

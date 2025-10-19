@@ -3,14 +3,52 @@ import { Camera, XCircle } from 'lucide-react';
 import * as faceapi from 'face-api.js';
 import Button from '../common/Button';
 import { photosAPI } from '../../services/api';
+import { registerStream, registerVideoElement, unregisterStream, unregisterVideoElement, forceCleanupAllCameraResources } from '../../utils/cameraCleanup';
 
 const LiveAttendance = ({ courseId, students, onAttendanceMarked }) => {
   const videoRef = useRef();
   const canvasRef = useRef();
+  const streamRef = useRef(null);
+  const recognitionIntervalRef = useRef(null);
   const [isInitializing, setIsInitializing] = useState(true);
   const [isCapturing, setIsCapturing] = useState(false);
   const [studentFaceDescriptors, setStudentFaceDescriptors] = useState({});
   const [recognizedStudents, setRecognizedStudents] = useState([]);
+
+  // Cleanup function
+  const cleanup = () => {
+    console.log('Cleaning up camera and recognition resources...');
+    
+    // Stop recognition interval
+    if (recognitionIntervalRef.current) {
+      clearInterval(recognitionIntervalRef.current);
+      recognitionIntervalRef.current = null;
+    }
+    
+    // Stop camera stream
+    if (streamRef.current) {
+      unregisterStream(streamRef.current);
+      streamRef.current.getTracks().forEach(track => {
+        track.stop();
+        console.log('Stopped track:', track.kind);
+      });
+      streamRef.current = null;
+    }
+    
+    // Clean up video element
+    if (videoRef.current) {
+      unregisterVideoElement(videoRef.current);
+      videoRef.current.srcObject = null;
+      videoRef.current.pause();
+    }
+    
+    // Reset states
+    setIsCapturing(false);
+    setRecognizedStudents([]);
+    
+    // Force cleanup of all camera resources
+    forceCleanupAllCameraResources();
+  };
 
   // Load face-api models and initialize
   useEffect(() => {
@@ -32,6 +70,11 @@ const LiveAttendance = ({ courseId, students, onAttendanceMarked }) => {
     };
 
     loadModels();
+
+    // Cleanup on unmount
+    return () => {
+      cleanup();
+    };
   }, []);
 
   // Load student photos and compute face descriptors
@@ -63,7 +106,10 @@ const LiveAttendance = ({ courseId, students, onAttendanceMarked }) => {
   const startCapture = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      streamRef.current = stream;
+      registerStream(stream);
       videoRef.current.srcObject = stream;
+      registerVideoElement(videoRef.current);
       setIsCapturing(true);
       startFaceRecognition();
     } catch (error) {
@@ -73,13 +119,7 @@ const LiveAttendance = ({ courseId, students, onAttendanceMarked }) => {
 
   // Stop video capture
   const stopCapture = () => {
-    const stream = videoRef.current?.srcObject;
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-    }
-    videoRef.current.srcObject = null;
-    setIsCapturing(false);
-    setRecognizedStudents([]);
+    cleanup();
   };
 
   // Continuous face recognition
@@ -90,9 +130,12 @@ const LiveAttendance = ({ courseId, students, onAttendanceMarked }) => {
       ))
     );
 
-    const recognitionInterval = setInterval(async () => {
-      if (!videoRef.current?.srcObject) {
-        clearInterval(recognitionInterval);
+    recognitionIntervalRef.current = setInterval(async () => {
+      if (!videoRef.current?.srcObject || !streamRef.current) {
+        if (recognitionIntervalRef.current) {
+          clearInterval(recognitionIntervalRef.current);
+          recognitionIntervalRef.current = null;
+        }
         return;
       }
 
@@ -120,8 +163,6 @@ const LiveAttendance = ({ courseId, students, onAttendanceMarked }) => {
       canvasRef.current.getContext('2d').clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
       faceapi.draw.drawDetections(canvasRef.current, resizedDetections);
     }, 100); // Check every 100ms
-
-    return () => clearInterval(recognitionInterval);
   };
 
   const markAttendance = () => {
