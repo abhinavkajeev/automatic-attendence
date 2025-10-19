@@ -14,7 +14,7 @@ import {
   Zap,
   TrendingUp
 } from 'lucide-react';
-import { attendanceAPI } from '../services/api';
+import { attendanceAPI, studentsAPI } from '../services/api';
 
 const LiveAttendance = () => {
   const { courseId } = useParams();
@@ -135,26 +135,42 @@ const LiveAttendance = () => {
 
       if (result.success && result.recognized && result.recognized.length > 0) {
         const recognizedStudentIds = result.recognized.map(r => r.student_id);
-        
+
         const attendanceResponse = await attendanceAPI.markByFaceRecognition(courseId, recognizedStudentIds);
         console.log('Attendance marked:', attendanceResponse);
-        
-        const newMarkedStudents = result.recognized.map(r => ({
-          id: r.student_id,
-          name: `Student ${r.student_id}`,
-          time: new Date().toLocaleTimeString(),
-          confidence: r.confidence
-        }));
-        
+
+        // Try to fetch student details for each recognized id so we can show real names
+        const studentFetches = result.recognized.map(r =>
+          studentsAPI.getById(r.student_id)
+            .then(res => ({
+              id: r.student_id,
+              name: res.data?.data?.name || `Student ${r.student_id}`,
+              time: new Date().toLocaleTimeString(),
+              confidence: r.confidence
+            }))
+            .catch(err => {
+              // If fetching fails, fallback to ID-based name
+              console.warn(`Failed to fetch student ${r.student_id}:`, err);
+              return {
+                id: r.student_id,
+                name: `Student ${r.student_id}`,
+                time: new Date().toLocaleTimeString(),
+                confidence: r.confidence
+              };
+            })
+        );
+
+        const newMarkedStudents = await Promise.all(studentFetches);
+
         setMarkedStudents(prev => {
           const existingIds = prev.map(s => s.id);
           const uniqueNewStudents = newMarkedStudents.filter(s => !existingIds.includes(s.id));
-          
+
           if (uniqueNewStudents.length > 0) {
             setLastMarkedStudent(uniqueNewStudents[0]);
             setTimeout(() => setLastMarkedStudent(null), 3000);
           }
-          
+
           return [...prev, ...uniqueNewStudents];
         });
       }
@@ -484,7 +500,7 @@ const LiveAttendance = () => {
                               style={{ backgroundColor: '#10B981' }}
                               whileHover={{ scale: 1.1, rotate: 5 }}
                             >
-                              {student.name && student.name.length > 8 ? student.name.charAt(8) : 'S'}
+                              {student.name && student.name.length > 0 ? student.name.charAt(0).toUpperCase() : 'S'}
                             </motion.div>
                             <div className="flex-1">
                               <p className="font-bold text-gray-900">{student.name || 'Unknown Student'}</p>
