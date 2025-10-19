@@ -649,5 +649,63 @@ def delete_student():
             'message': f'Server error: {str(e)}'
         }), 500
 
+@app.route('/debug-embeddings', methods=['GET'])
+def debug_embeddings():
+    """Debug endpoint to check current embeddings and student IDs"""
+    try:
+        return jsonify({
+            'success': True,
+            'student_ids': student_data['student_ids'],
+            'encodings_count': len(student_data['encodings']),
+            'message': f'Found {len(student_data["student_ids"])} students in face recognition system'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Server error: {str(e)}'
+        }), 500
+
+@app.route('/update-student-id', methods=['POST'])
+def update_student_id():
+    """Update a student ID in the face recognition system"""
+    try:
+        data = request.get_json()
+        old_id = data.get('old_id')
+        new_id = data.get('new_id')
+        
+        if not old_id or not new_id:
+            return jsonify({
+                'success': False,
+                'message': 'Both old_id and new_id are required'
+            }), 400
+        
+        if old_id not in student_data['student_ids']:
+            return jsonify({
+                'success': False,
+                'message': f'Student {old_id} not found in face recognition system'
+            }), 404
+        
+        # Update the student ID
+        index = student_data['student_ids'].index(old_id)
+        student_data['student_ids'][index] = new_id
+        
+        # Save updated data
+        save_student_data(student_data)
+        
+        print(f"Updated student ID from {old_id} to {new_id}")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Updated student ID from {old_id} to {new_id}',
+            'old_id': old_id,
+            'new_id': new_id
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Server error: {str(e)}'
+        }), 500
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001)

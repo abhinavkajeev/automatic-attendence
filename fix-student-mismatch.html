@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fix Student ID Mismatch</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .danger {
+            background: #dc3545;
+        }
+        .danger:hover {
+            background: #c82333;
+        }
+        input {
+            padding: 8px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+        }
+        .result {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Fix Student ID Mismatch</h1>
+        <p><strong>Issue:</strong> Face recognition shows "Student 520" but should show "Student 555"</p>
+        
+        <div class="section">
+            <h3>1. Check Current Face Recognition Data</h3>
+            <button onclick="checkEmbeddings()">Check Current Students</button>
+            <div id="embeddingsResult"></div>
+        </div>
+        
+        <div class="section">
+            <h3>2. Fix the Mismatch</h3>
+            <p>Update student ID from 520 to 555:</p>
+            <button onclick="updateStudentId('520', '555')" class="danger">Update 520 → 555</button>
+            <div id="updateResult"></div>
+        </div>
+        
+        <div class="section">
+            <h3>3. Alternative: Remove Wrong Student</h3>
+            <p>If student 520 is completely wrong, remove it:</p>
+            <button onclick="removeStudent('520')" class="danger">Remove Student 520</button>
+            <div id="removeResult"></div>
+        </div>
+        
+        <div class="section">
+            <h3>4. Re-enroll Student 555</h3>
+            <p>After fixing, you may need to re-enroll student 555 with their photo:</p>
+            <p><em>Go to Students page → Find student 555 → Update photo</em></p>
+        </div>
+    </div>
+
+    <script>
+        const CV_ENGINE_URL = 'http://localhost:5001';
+        
+        async function checkEmbeddings() {
+            try {
+                const response = await fetch(`${CV_ENGINE_URL}/debug-embeddings`);
+                const data = await response.json();
+                
+                const resultDiv = document.getElementById('embeddingsResult');
+                if (data.success) {
+                    resultDiv.innerHTML = `
+                        <div class="result info">
+                            <strong>Current students in face recognition:</strong><br>
+                            ${data.student_ids.map(id => `• Student ${id}`).join('<br>')}<br>
+                            <strong>Total:</strong> ${data.encodings_count} students
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `<div class="result error">Error: ${data.message}</div>`;
+                }
+            } catch (error) {
+                document.getElementById('embeddingsResult').innerHTML = 
+                    `<div class="result error">Error: ${error.message}</div>`;
+            }
+        }
+        
+        async function updateStudentId(oldId, newId) {
+            try {
+                const response = await fetch(`${CV_ENGINE_URL}/update-student-id`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        old_id: oldId,
+                        new_id: newId
+                    })
+                });
+                
+                const data = await response.json();
+                const resultDiv = document.getElementById('updateResult');
+                
+                if (data.success) {
+                    resultDiv.innerHTML = `
+                        <div class="result success">
+                            ✅ Successfully updated student ID from ${oldId} to ${newId}
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `<div class="result error">Error: ${data.message}</div>`;
+                }
+            } catch (error) {
+                document.getElementById('updateResult').innerHTML = 
+                    `<div class="result error">Error: ${error.message}</div>`;
+            }
+        }
+        
+        async function removeStudent(studentId) {
+            try {
+                const response = await fetch(`${CV_ENGINE_URL}/delete-student`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        student_id: studentId
+                    })
+                });
+                
+                const data = await response.json();
+                const resultDiv = document.getElementById('removeResult');
+                
+                if (data.success) {
+                    resultDiv.innerHTML = `
+                        <div class="result success">
+                            ✅ Successfully removed student ${studentId}<br>
+                            Files deleted: ${data.files_deleted_count}
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `<div class="result error">Error: ${data.message}</div>`;
+                }
+            } catch (error) {
+                document.getElementById('removeResult').innerHTML = 
+                    `<div class="result error">Error: ${error.message}</div>`;
+            }
+        }
+        
+        // Auto-check embeddings on page load
+        window.onload = function() {
+            checkEmbeddings();
+        };
+    </script>
+</body>
+</html>
