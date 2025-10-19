@@ -484,10 +484,10 @@ const LiveAttendance = () => {
                               style={{ backgroundColor: '#10B981' }}
                               whileHover={{ scale: 1.1, rotate: 5 }}
                             >
-                              {student.name.charAt(8)}
+                              {student.name && student.name.length > 8 ? student.name.charAt(8) : 'S'}
                             </motion.div>
                             <div className="flex-1">
-                              <p className="font-bold text-gray-900">{student.name}</p>
+                              <p className="font-bold text-gray-900">{student.name || 'Unknown Student'}</p>
                               <p className="text-xs text-gray-500">ID: {student.id}</p>
                               <div className="flex items-center gap-2 mt-1">
                                 <Clock size={12} className="text-gray-400" />
