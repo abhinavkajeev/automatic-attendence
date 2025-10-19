@@ -79,7 +79,22 @@ exports.deleteStudent = async (req, res) => {
     if (!student) {
       return res.status(404).json({ success: false, message: 'Student not found' });
     }
-    res.json({ success: true, message: 'Student deleted successfully' });
+
+    // Delete student from CV engine (face recognition system)
+    try {
+      const cvDeleteResult = await cvEngineService.deleteStudent(req.params.id);
+      console.log('CV Engine delete result:', cvDeleteResult);
+    } catch (cvError) {
+      console.error('Error deleting student from CV engine:', cvError.message);
+      // Don't fail the entire operation if CV engine deletion fails
+      // The student is already deleted from the database
+    }
+
+    res.json({ 
+      success: true, 
+      message: 'Student deleted successfully',
+      studentId: req.params.id
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

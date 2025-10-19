@@ -58,6 +58,22 @@ const cvEngineService = {
     } catch (error) {
       throw new Error(`CV Engine Error: ${error.response?.data?.message || error.message}`);
     }
+  },
+
+  async deleteStudent(studentId) {
+    try {
+      const response = await axios.post(`${CV_ENGINE_URL}/delete-student`, {
+        student_id: studentId
+      }, {
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      return response.data;
+    } catch (error) {
+      throw new Error(`CV Engine Error: ${error.response?.data?.message || error.message}`);
+    }
   }
 };
 

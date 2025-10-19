@@ -577,5 +577,77 @@ def verify_face():
             'message': f'Server error: {str(e)}'
         }), 500
 
+@app.route('/delete-student', methods=['POST'])
+def delete_student():
+    """Delete a student's face data and associated files"""
+    try:
+        data = request.get_json()
+        student_id = data.get('student_id')
+        
+        if not student_id:
+            return jsonify({
+                'success': False,
+                'message': 'Student ID is required'
+            }), 400
+        
+        print(f"Deleting student {student_id} from face recognition system...")
+        
+        # Find and remove student from embeddings
+        student_found = False
+        if student_id in student_data['student_ids']:
+            # Get the index of the student
+            student_index = student_data['student_ids'].index(student_id)
+            
+            # Remove from both lists
+            student_data['encodings'].pop(student_index)
+            student_data['student_ids'].pop(student_index)
+            
+            # Save updated data
+            save_student_data(student_data)
+            student_found = True
+            
+            print(f"Removed student {student_id} from embeddings")
+        
+        # Delete associated image files
+        files_deleted = []
+        
+        # Delete from uploads/students directory
+        upload_path = os.path.join(UPLOAD_FOLDER, 'students', f'{student_id}.jpg')
+        if os.path.exists(upload_path):
+            os.remove(upload_path)
+            files_deleted.append(upload_path)
+            print(f"Deleted upload file: {upload_path}")
+        
+        # Delete from processed_faces directory
+        processed_path = os.path.join(PROCESSED_FACES, f'{student_id}.jpg')
+        if os.path.exists(processed_path):
+            os.remove(processed_path)
+            files_deleted.append(processed_path)
+            print(f"Deleted processed file: {processed_path}")
+        
+        # Also check for any files with the student ID in the name (in case of different extensions)
+        for directory in [UPLOAD_FOLDER, PROCESSED_FACES]:
+            for filename in os.listdir(directory):
+                if filename.startswith(f'{student_id}_') or filename.startswith(f'{student_id}.'):
+                    file_path = os.path.join(directory, filename)
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                        files_deleted.append(file_path)
+                        print(f"Deleted additional file: {file_path}")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Student {student_id} deleted successfully',
+            'student_found_in_embeddings': student_found,
+            'files_deleted': files_deleted,
+            'files_deleted_count': len(files_deleted)
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Server error: {str(e)}'
+        }), 500
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001)
