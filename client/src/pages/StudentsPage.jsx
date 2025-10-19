@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { UserPlus, Download } from 'lucide-react';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
@@ -117,9 +118,39 @@ const StudentsPage = () => {
     alert(`View details for ${student.name} - Feature coming soon!`);
   };
 
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.1
+      }
+    }
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 20 },
+    visible: {
+      opacity: 1,
+      y: 0,
+      transition: {
+        duration: 0.5,
+        ease: "easeOut"
+      }
+    }
+  };
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <motion.div 
+      className="space-y-6"
+      variants={containerVariants}
+      initial="hidden"
+      animate="visible"
+    >
+      <motion.div 
+        className="flex items-center justify-between"
+        variants={itemVariants}
+      >
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Students</h1>
           <p className="text-gray-500 mt-1">Manage your student database</p>
@@ -139,58 +170,81 @@ const StudentsPage = () => {
             Add Student
           </Button>
         </div>
-      </div>
+      </motion.div>
 
-      <Card>
-        <div className="mb-4 flex flex-wrap gap-4">
-          <input
-            type="text"
-            placeholder="Search students..."
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-            value={filters.search}
-            onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-          />
-          <select
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-            value={filters.department}
-            onChange={(e) => setFilters({ ...filters, department: e.target.value })}
+      <motion.div variants={itemVariants}>
+        <Card>
+          <motion.div 
+            className="mb-4 flex flex-wrap gap-4"
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
           >
-            <option value="">All Departments</option>
-            <option value="CSE">Computer Science</option>
-            <option value="ECE">Electronics</option>
-            <option value="ME">Mechanical</option>
-            <option value="CE">Civil</option>
-          </select>
-          <select
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-            value={filters.year}
-            onChange={(e) => setFilters({ ...filters, year: e.target.value })}
-          >
-            <option value="">All Years</option>
-            <option value="1">1st Year</option>
-            <option value="2">2nd Year</option>
-            <option value="3">3rd Year</option>
-            <option value="4">4th Year</option>
-          </select>
-        </div>
+            <input
+              type="text"
+              placeholder="Search students..."
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+              value={filters.search}
+              onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+            />
+            <select
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+              value={filters.department}
+              onChange={(e) => setFilters({ ...filters, department: e.target.value })}
+            >
+              <option value="">All Departments</option>
+              <option value="CSE">Computer Science</option>
+              <option value="ECE">Electronics</option>
+              <option value="ME">Mechanical</option>
+              <option value="CE">Civil</option>
+            </select>
+            <select
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+              value={filters.year}
+              onChange={(e) => setFilters({ ...filters, year: e.target.value })}
+            >
+              <option value="">All Years</option>
+              <option value="1">1st Year</option>
+              <option value="2">2nd Year</option>
+              <option value="3">3rd Year</option>
+              <option value="4">4th Year</option>
+            </select>
+          </motion.div>
 
-        {loading ? (
-          <div className="py-12">
-            <Spinner />
-          </div>
-        ) : students.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-gray-500">No students found</p>
-          </div>
-        ) : (
-          <StudentTable
-            students={students}
-            onEdit={handleEdit}
-            onDelete={handleDelete}
-            onView={handleView}
-          />
-        )}
-      </Card>
+          {loading ? (
+            <motion.div 
+              className="py-12"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              <Spinner />
+            </motion.div>
+          ) : students.length === 0 ? (
+            <motion.div 
+              className="text-center py-12"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.3 }}
+            >
+              <p className="text-gray-500">No students found</p>
+            </motion.div>
+          ) : (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.3 }}
+            >
+              <StudentTable
+                students={students}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+                onView={handleView}
+              />
+            </motion.div>
+          )}
+        </Card>
+      </motion.div>
 
       <Modal
         isOpen={isModalOpen}
@@ -210,7 +264,7 @@ const StudentsPage = () => {
           initialData={editingStudent}
         />
       </Modal>
-    </div>
+    </motion.div>
   );
 };
 
