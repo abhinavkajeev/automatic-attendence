@@ -48,98 +48,97 @@ def save_student_data(data):
 # Load student data
 student_data = load_student_data()
 
+def validate_encoding_shape(encoding):
+    """Validate that the encoding has the correct shape for face_recognition (128 dimensions)"""
+    if encoding is None:
+        return False
+    
+    # Convert to numpy array if it isn't already
+    if not isinstance(encoding, np.ndarray):
+        encoding = np.array(encoding)
+    
+    # Check if it's the correct shape (128 dimensions for face_recognition)
+    return encoding.shape == (128,)
+
+def validate_and_clean_student_data():
+    """Remove any student data with invalid encoding shapes"""
+    global student_data
+    
+    valid_embeddings = []
+    valid_student_ids = []
+    
+    for i, (student_id, encoding) in enumerate(zip(student_data['student_ids'], student_data['embeddings'])):
+        if validate_encoding_shape(encoding):
+            valid_embeddings.append(encoding)
+            valid_student_ids.append(student_id)
+        else:
+            print(f"⚠️  Removing invalid encoding for student {student_id} (shape: {np.array(encoding).shape})")
+    
+    # Update the global student data
+    student_data['embeddings'] = valid_embeddings
+    student_data['student_ids'] = valid_student_ids
+    
+    if len(valid_embeddings) != len(student_data['embeddings']):
+        print(f"Cleaned student data: {len(valid_embeddings)} valid encodings kept")
+        save_student_data(student_data)
+
+# Clean up any invalid encodings on startup
+validate_and_clean_student_data()
+
 def get_face_encoding(image):
-    """Get face encoding using OpenCV - returns largest face only"""
-    # Preprocess image for better face detection
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    """Get face encoding using face_recognition library - returns largest face only"""
+    # Convert BGR to RGB for face_recognition library
+    rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     
-    # Apply histogram equalization for better contrast
-    gray = cv2.equalizeHist(gray)
+    # Find face locations
+    face_locations = face_recognition.face_locations(rgb_image)
     
-    # Try multiple detection parameters for better face detection
-    faces = face_cascade.detectMultiScale(
-        gray, 
-        scaleFactor=1.1, 
-        minNeighbors=3, 
-        minSize=(30, 30),
-        flags=cv2.CASCADE_SCALE_IMAGE
-    )
-    
-    if len(faces) == 0:
-        # Try with more lenient parameters
-        faces = face_cascade.detectMultiScale(
-            gray, 
-            scaleFactor=1.05, 
-            minNeighbors=2, 
-            minSize=(20, 20),
-            flags=cv2.CASCADE_SCALE_IMAGE
-        )
-    
-    if len(faces) == 0:
-        # Try with very lenient parameters
-        faces = face_cascade.detectMultiScale(
-            gray, 
-            scaleFactor=1.03, 
-            minNeighbors=1, 
-            minSize=(15, 15),
-            flags=cv2.CASCADE_SCALE_IMAGE
-        )
-    
-    if len(faces) == 0:
+    if not face_locations:
         print(f"No faces detected in image of size: {image.shape}")
         return None
     
     print(f"Detected {len(face_locations)} faces")
     
     # Get the largest face
-    largest_face = max(faces, key=lambda r: r[2] * r[3])
-    x, y, w, h = largest_face
+    largest_face = max(face_locations, key=lambda loc: (loc[2] - loc[0]) * (loc[1] - loc[3]))
+    top, right, bottom, left = largest_face
     
-    print(f"Largest face: x={x}, y={y}, w={w}, h={h}")
+    print(f"Largest face: top={top}, right={right}, bottom={bottom}, left={left}")
     
-    # Extract face ROI and resize
-    face_roi = image[y:y+h, x:x+w]
-    face_encoding = cv2.resize(face_roi, (128, 128)).flatten()
+    # Get face encoding using face_recognition
+    face_encodings = face_recognition.face_encodings(rgb_image, [largest_face])
+    
+    if not face_encodings:
+        print("Failed to generate face encoding")
+        return None
+    
+    face_encoding = face_encodings[0]
+    
+    # Convert face_recognition location format to OpenCV format for consistency
+    x, y, w, h = left, top, right - left, bottom - top
     
     return face_encoding, (x, y, w, h)
 
 def get_all_face_encodings(image):
-    """Get encodings for all faces in the image with improved validation"""
-    # Preprocess image for better face detection
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    """Get encodings for all faces in the image using face_recognition library"""
+    # Convert BGR to RGB for face_recognition library
+    rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     
-    # Apply histogram equalization for better contrast
-    gray = cv2.equalizeHist(gray)
+    # Find face locations
+    face_locations = face_recognition.face_locations(rgb_image)
     
-    # Use stricter parameters to avoid false positives
-    faces = face_cascade.detectMultiScale(
-        gray, 
-        scaleFactor=1.1, 
-        minNeighbors=5,  # Increased from 3 to 5 for better accuracy
-        minSize=(50, 50),  # Increased minimum size
-        flags=cv2.CASCADE_SCALE_IMAGE
-    )
-    
-    if len(faces) == 0:
-        # Try with slightly more lenient parameters
-        faces = face_cascade.detectMultiScale(
-            gray, 
-            scaleFactor=1.05, 
-            minNeighbors=4,  # Still strict
-            minSize=(40, 40),
-            flags=cv2.CASCADE_SCALE_IMAGE
-        )
-    
-    if len(faces) == 0:
+    if not face_locations:
         print(f"No faces detected in image of size: {image.shape}")
         return []
     
-    print(f"Raw detection: {len(faces)} faces found")
+    print(f"Raw detection: {len(face_locations)} faces found")
     
-    # Filter out overlapping faces and validate face quality
+    # Filter out faces that are too small or too large
     valid_faces = []
-    for i, (x, y, w, h) in enumerate(faces):
-        # Check if face is too small or too large (likely false positive)
+    for i, (top, right, bottom, left) in enumerate(face_locations):
+        # Calculate face dimensions
+        w = right - left
+        h = bottom - top
         face_area = w * h
         image_area = image.shape[0] * image.shape[1]
         face_ratio = face_area / image_area
@@ -151,48 +150,54 @@ def get_all_face_encodings(image):
         # Check for overlapping faces (remove duplicates)
         is_duplicate = False
         for valid_face in valid_faces:
-            vx, vy, vw, vh = valid_face['coordinates']
+            v_top, v_right, v_bottom, v_left = valid_face['location']
             # Calculate overlap
-            overlap_x = max(0, min(x + w, vx + vw) - max(x, vx))
-            overlap_y = max(0, min(y + h, vy + vh) - max(y, vy))
-            overlap_area = overlap_x * overlap_y
-            face_area1 = w * h
-            face_area2 = vw * vh
+            overlap_left = max(left, v_left)
+            overlap_top = max(top, v_top)
+            overlap_right = min(right, v_right)
+            overlap_bottom = min(bottom, v_bottom)
             
-            if overlap_area > 0.3 * min(face_area1, face_area2):  # 30% overlap threshold
-                print(f"Face {i+1} rejected: overlaps with existing face")
-                is_duplicate = True
-                break
+            if overlap_left < overlap_right and overlap_top < overlap_bottom:
+                overlap_area = (overlap_right - overlap_left) * (overlap_bottom - overlap_top)
+                face_area1 = w * h
+                face_area2 = (v_right - v_left) * (v_bottom - v_top)
+                
+                if overlap_area > 0.3 * min(face_area1, face_area2):  # 30% overlap threshold
+                    print(f"Face {i+1} rejected: overlaps with existing face")
+                    is_duplicate = True
+                    break
         
         if not is_duplicate:
             valid_faces.append({
-                'coordinates': (x, y, w, h),
+                'location': (top, right, bottom, left),
+                'coordinates': (left, top, w, h),  # Convert to OpenCV format
                 'area': face_area,
                 'ratio': face_ratio
             })
-            print(f"Face {i+1} accepted: x={x}, y={y}, w={w}, h={h}, ratio={face_ratio:.3f}")
+            print(f"Face {i+1} accepted: x={left}, y={top}, w={w}, h={h}, ratio={face_ratio:.3f}")
     
     print(f"After filtering: {len(valid_faces)} valid faces")
     
     # Generate encodings for valid faces
     face_encodings = []
-    for i, face_data in enumerate(valid_faces):
-        x, y, w, h = face_data['coordinates']
-        print(f"Processing valid face {i+1}: x={x}, y={y}, w={w}, h={h}")
+    if valid_faces:
+        # Get all face encodings at once for efficiency
+        face_locations_list = [face['location'] for face in valid_faces]
+        encodings = face_recognition.face_encodings(rgb_image, face_locations_list)
         
-        # Extract face ROI and resize
-        face_roi = image[y:y+h, x:x+w]
-        face_encoding = cv2.resize(face_roi, (128, 128)).flatten()
-        
-        face_encodings.append({
-            'encoding': face_encoding,
-            'coordinates': (x, y, w, h)
-        })
+        for i, (face_data, encoding) in enumerate(zip(valid_faces, encodings)):
+            x, y, w, h = face_data['coordinates']
+            print(f"Processing valid face {i+1}: x={x}, y={y}, w={w}, h={h}")
+            
+            face_encodings.append({
+                'encoding': encoding,
+                'coordinates': (x, y, w, h)
+            })
     
     return result
 
-def compare_faces(known_encoding, face_encoding, tolerance=30000):
-    """Improved face comparison with stricter tolerance and validation"""
+def compare_faces(known_encoding, face_encoding, tolerance=0.6):
+    """Improved face comparison using face_recognition library"""
     if known_encoding is None or face_encoding is None:
         return False
     
@@ -201,42 +206,40 @@ def compare_faces(known_encoding, face_encoding, tolerance=30000):
         print(f"Encoding length mismatch: {len(known_encoding)} vs {len(face_encoding)}")
         return False
     
-    # Calculate Euclidean distance
-    dist = np.linalg.norm(known_encoding - face_encoding)
-    print(f"Face distance: {dist:.2f}, tolerance: {tolerance}")
+    # Use face_recognition's compare_faces function
+    matches = face_recognition.compare_faces([known_encoding], face_encoding, tolerance=tolerance)
     
-    # Check for identical encodings (distance = 0)
-    if dist < 0.001:
+    # Calculate distance for logging
+    dist = face_recognition.face_distance([known_encoding], face_encoding)[0]
+    print(f"Face distance: {dist:.3f}, tolerance: {tolerance}, match: {matches[0]}")
+    
+    # Check for identical encodings (distance very close to 0)
+    if dist < 0.01:
         print("⚠️  WARNING: Face encodings are nearly identical!")
-        return False  # Reject identical faces
+        return False  # Reject nearly identical faces
     
-    # Much stricter tolerance - only very similar faces should match
-    return dist < tolerance
+    return matches[0]
 
 def get_face_confidence(known_encoding, face_encoding):
-    """Calculate confidence score based on face distance"""
+    """Calculate confidence score based on face distance using face_recognition"""
     if known_encoding is None or face_encoding is None:
         return 0.0
     
     if len(known_encoding) != len(face_encoding):
         return 0.0
     
-    # Calculate Euclidean distance
-    dist = np.linalg.norm(known_encoding - face_encoding)
+    # Calculate face distance using face_recognition
+    dist = face_recognition.face_distance([known_encoding], face_encoding)[0]
     
     # Convert distance to confidence (lower distance = higher confidence)
-    # Max distance for 0% confidence, min distance for 100% confidence
-    max_distance = 50000  # Maximum expected distance
-    min_distance = 5000   # Minimum expected distance for good match
-    
-    if dist > max_distance:
+    # face_recognition distances typically range from 0.0 to 1.0+
+    # Good matches are usually < 0.6
+    if dist > 1.0:
         return 0.0
-    elif dist < min_distance:
-        return 1.0
+    elif dist < 0.4:
+        return 1.0 - (dist / 0.4) * 0.2  # Map 0.0-0.4 to 1.0-0.8
     else:
-        # Linear interpolation between min and max
-        confidence = 1.0 - ((dist - min_distance) / (max_distance - min_distance))
-        return max(0.0, min(1.0, confidence))  # Clamp between 0 and 1
+        return max(0.0, 1.0 - dist)  # Map 0.4-1.0 to 0.6-0.0
 
 # Initialize systems
 from werkzeug.utils import secure_filename
@@ -315,11 +318,11 @@ def enroll_student():
         top, right, bottom, left = face_location
         x, y, w, h = left, top, right - left, bottom - top
         
-        # Check for duplicate faces (with more lenient tolerance)
+        # Check for duplicate faces (with face_recognition tolerance)
         duplicate_found = False
         duplicate_student_id = None
         for i, encoding in enumerate(student_data['embeddings']):
-            if compare_faces(encoding, face_encoding, tolerance=40000):  # Improved tolerance
+            if compare_faces(encoding, face_encoding, tolerance=0.6):  # Standard face_recognition tolerance
                 duplicate_found = True
                 duplicate_student_id = student_data["student_ids"][i]
                 break
@@ -406,11 +409,11 @@ def video_feed():
                 best_distance = float('inf')
                 
                 for i, encoding in enumerate(student_data['embeddings']):
-                    distance = np.linalg.norm(encoding - face_encoding)
+                    distance = face_recognition.face_distance([encoding], face_encoding)[0]
                     confidence = get_face_confidence(encoding, face_encoding)
                     
                     # Find the match with the smallest distance (best match)
-                    if distance < best_distance and distance < 30000:  # Only consider reasonable matches
+                    if distance < best_distance and distance < 0.6:  # Only consider reasonable matches
                         best_distance = distance
                         best_confidence = confidence
                         best_match = {
@@ -625,13 +628,13 @@ def verify_face():
             best_distance = float('inf')
             
             for i, encoding in enumerate(student_data['embeddings']):
-                distance = np.linalg.norm(encoding - face_encoding)
+                distance = face_recognition.face_distance([encoding], face_encoding)[0]
                 confidence = get_face_confidence(encoding, face_encoding)
                 
-                print(f"  Student {student_data['student_ids'][i]}: distance={distance:.2f}, confidence={confidence:.3f}")
+                print(f"  Student {student_data['student_ids'][i]}: distance={distance:.3f}, confidence={confidence:.3f}")
                 
                 # Find the match with the smallest distance (best match)
-                if distance < best_distance and distance < 30000:  # Only consider reasonable matches
+                if distance < best_distance and distance < 0.6:  # Only consider reasonable matches
                     best_distance = distance
                     best_match = {
                         'student_id': student_data['student_ids'][i],
