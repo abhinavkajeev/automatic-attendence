@@ -1,0 +1,20 @@
+{
+  "use_manual_override": true,
+  "opencv_similarity_threshold_for_duplicates": 0.99,
+  "opencv_similarity_threshold_for_recognition": 0.75,
+  "known_different_students": [
+    [
+      "132",
+      "172"
+    ],
+    [
+      "132",
+      "564"
+    ],
+    [
+      "172",
+      "564"
+    ]
+  ],
+  "note": "OpenCV method is inadequate - these thresholds prevent false duplicates"
+}

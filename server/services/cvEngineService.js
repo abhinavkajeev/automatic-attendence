@@ -62,16 +62,25 @@ const cvEngineService = {
 
   async deleteStudent(studentId) {
     try {
+      console.log(`CV Engine Service: Attempting to delete student ${studentId} from ${CV_ENGINE_URL}/delete-student`);
+      
       const response = await axios.post(`${CV_ENGINE_URL}/delete-student`, {
         student_id: studentId
       }, {
         headers: {
           'Content-Type': 'application/json'
-        }
+        },
+        timeout: 10000 // 10 second timeout
       });
 
+      console.log(`CV Engine Service: Delete response for ${studentId}:`, response.data);
       return response.data;
     } catch (error) {
+      console.error(`CV Engine Service: Error deleting student ${studentId}:`, error.message);
+      if (error.response) {
+        console.error('CV Engine Response Status:', error.response.status);
+        console.error('CV Engine Response Data:', error.response.data);
+      }
       throw new Error(`CV Engine Error: ${error.response?.data?.message || error.message}`);
     }
   }
