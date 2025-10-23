@@ -69,8 +69,16 @@ const AddStudentForm = ({ onClose, onSuccess }) => {
   };
 
   return (
-    <Card className="w-full max-w-2xl mx-auto">
-      <div className="p-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* Backdrop with blur */}
+      <div
+        className="absolute inset-0 bg-black/30 backdrop-blur-sm transition-opacity"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+
+      <Card className="relative w-full max-w-2xl mx-4">
+        <div className="p-6">
         <h2 className="text-xl font-bold text-gray-900 mb-6">Add New Student</h2>
         
         {error && (
@@ -232,6 +240,7 @@ const AddStudentForm = ({ onClose, onSuccess }) => {
         </form>
       </div>
     </Card>
+    </div>
   );
 };
 
