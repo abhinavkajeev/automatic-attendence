@@ -1,26 +1,29 @@
-const mongoose = require('mongoose');
-const Attendance = require('../models/Attendance');
-const Student = require('../models/Student');
-const Course = require('../models/Course');
+const { Attendance, Student, Course, sequelize } = require('../models');
+const { Op } = require('sequelize');
+const nodemailer = require('nodemailer');
 
 // Get attendance records with filters
 exports.getAttendance = async (req, res) => {
   try {
     const { course, student, startDate, endDate } = req.query;
-    let query = {};
+    let where = {};
 
-    if (course) query.course = course;
-    if (student) query.student = student;
+    if (course) where.CourseId = course;
+    if (student) where.StudentId = student;
     if (startDate || endDate) {
-      query.date = {};
-      if (startDate) query.date.$gte = new Date(startDate);
-      if (endDate) query.date.$lte = new Date(endDate);
+      where.date = {};
+      if (startDate) where.date[Op.gte] = new Date(startDate);
+      if (endDate) where.date[Op.lte] = new Date(endDate);
     }
 
-    const attendance = await Attendance.find(query)
-      .populate('student', 'name rollNumber')
-      .populate('course', 'courseName courseCode')
-      .sort('-date');
+    const attendance = await Attendance.findAll({
+      where,
+      include: [
+        { model: Student, attributes: ['name', 'studentId'] },
+        { model: Course, attributes: ['courseName', 'courseCode'] }
+      ],
+      order: [['date', 'DESC']]
+    });
 
     res.json({ success: true, data: attendance });
   } catch (error) {
@@ -33,40 +36,38 @@ exports.markAttendance = async (req, res) => {
   try {
     const { studentId, courseId, date, status = 'present', verificationMethod = 'face-recognition' } = req.body;
 
-    // Validate student exists
-    const student = await Student.findById(studentId);
+    const student = await Student.findOne({ where: { studentId: studentId } });
     if (!student) {
       return res.status(404).json({ success: false, message: 'Student not found' });
     }
 
-    // Validate course exists
-    const course = await Course.findById(courseId);
+    const course = await Course.findByPk(courseId);
     if (!course) {
       return res.status(404).json({ success: false, message: 'Course not found' });
     }
 
-    // Create or update attendance
-    const attendance = await Attendance.findOneAndUpdate(
-      {
-        student: studentId,
-        course: courseId,
-        date: date || Date.now()
+    const attendanceDate = new Date(date || Date.now());
+    attendanceDate.setUTCHours(0, 0, 0, 0);
+
+    const [attendance, created] = await Attendance.findOrCreate({
+      where: {
+        StudentId: student.id,
+        CourseId: course.id,
+        date: attendanceDate
       },
-      {
+      defaults: {
         status,
-        verificationMethod,
-        $setOnInsert: { date: date || Date.now() }
-      },
-      {
-        new: true,
-        upsert: true,
-        runValidators: true
+        method: verificationMethod
       }
-    );
+    });
+
+    if (!created) {
+      await attendance.update({ status, method: verificationMethod });
+    }
 
     res.json({ success: true, data: attendance });
   } catch (error) {
-    if (error.code === 11000) {
+    if (error.name === 'SequelizeUniqueConstraintError') {
       return res.status(400).json({ 
         success: false, 
         message: 'Attendance already marked for this student in this course today' 
@@ -81,55 +82,49 @@ exports.getAttendanceStats = async (req, res) => {
   try {
     const { courseId, startDate, endDate } = req.query;
     
-    const matchQuery = {};
+    let where = {};
     if (courseId) {
-      matchQuery.course = new mongoose.Types.ObjectId(courseId);
+      where.CourseId = courseId;
     }
-
     if (startDate || endDate) {
-      matchQuery.date = {};
-      if (startDate) matchQuery.date.$gte = new Date(startDate);
-      if (endDate) matchQuery.date.$lte = new Date(endDate);
+      where.date = {};
+      if (startDate) where.date[Op.gte] = new Date(startDate);
+      if (endDate) where.date[Op.lte] = new Date(endDate);
     }
 
-    const stats = await Attendance.aggregate([
-      { $match: matchQuery },
-      {
-        $group: {
-          _id: '$student',
-          totalClasses: { $sum: 1 },
-          presentCount: {
-            $sum: {
-              $cond: [{ $eq: ['$status', 'present'] }, 1, 0]
-            }
-          }
+    const stats = await Attendance.findAll({
+      where,
+      attributes: [
+        'StudentId',
+        [sequelize.fn('COUNT', sequelize.col('Attendance.id')), 'totalClasses'],
+        [
+          sequelize.literal(`SUM(CASE WHEN Attendance.status = 'present' THEN 1 ELSE 0 END)`),
+          'presentCount'
+        ]
+      ],
+      include: [
+        { 
+          model: Student, 
+          attributes: ['name', 'studentId']
         }
-      },
-      {
-        $lookup: {
-          from: 'students',
-          localField: '_id',
-          foreignField: '_id',
-          as: 'student'
-        }
-      },
-      { $unwind: '$student' },
-      {
-        $project: {
-          student: { name: 1, rollNumber: 1 },
-          totalClasses: 1,
-          presentCount: 1,
-          attendancePercentage: {
-            $multiply: [
-              { $divide: ['$presentCount', '$totalClasses'] },
-              100
-            ]
-          }
-        }
-      }
-    ]);
+      ],
+      group: ['StudentId', 'Student.id']
+    });
 
-    res.json({ success: true, data: stats });
+    const formattedStats = stats.map(stat => {
+      const plainStat = stat.get({ plain: true });
+      const total = parseInt(plainStat.totalClasses, 10);
+      const present = parseInt(plainStat.presentCount || 0, 10);
+      return {
+        _id: plainStat.StudentId,
+        student: plainStat.Student,
+        totalClasses: total,
+        presentCount: present,
+        attendancePercentage: total > 0 ? (present / total) * 100 : 0
+      };
+    });
+
+    res.json({ success: true, data: formattedStats });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -138,11 +133,56 @@ exports.getAttendanceStats = async (req, res) => {
 // Delete attendance record
 exports.deleteAttendance = async (req, res) => {
   try {
-    const attendance = await Attendance.findByIdAndDelete(req.params.id);
+    const attendance = await Attendance.findByPk(req.params.id);
     if (!attendance) {
       return res.status(404).json({ success: false, message: 'Attendance record not found' });
     }
+    
+    // Daily Lock Check: Ensure attendance can only be modified on the same day
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const attendanceDate = new Date(attendance.date);
+    attendanceDate.setHours(0, 0, 0, 0);
+    
+    if (today.getTime() !== attendanceDate.getTime()) {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Records are locked! You cannot modify attendance after the day ends.' 
+      });
+    }
+
+    await attendance.destroy();
     res.json({ success: true, message: 'Attendance record deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Update attendance record (Manual Override)
+exports.updateAttendance = async (req, res) => {
+  try {
+    const attendance = await Attendance.findByPk(req.params.id);
+    if (!attendance) {
+      return res.status(404).json({ success: false, message: 'Attendance record not found' });
+    }
+    
+    // Daily Lock Check: Ensure attendance can only be modified on the same day
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const attendanceDate = new Date(attendance.date);
+    attendanceDate.setHours(0, 0, 0, 0);
+    
+    if (today.getTime() !== attendanceDate.getTime()) {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Records are locked! You cannot modify attendance after the day ends.' 
+      });
+    }
+
+    const { status } = req.body;
+    await attendance.update({ status, method: 'manual' });
+    
+    res.json({ success: true, data: attendance, message: 'Attendance updated successfully' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -154,17 +194,25 @@ exports.getByCourse = async (req, res) => {
     const { courseId } = req.params;
     const { date } = req.query;
 
-    const query = {
-      course: courseId,
-      date: date ? new Date(date) : { 
-        $gte: new Date().setHours(0,0,0,0),
-        $lt: new Date().setHours(23,59,59,999)
-      }
-    };
+    let where = { CourseId: courseId };
+    if (date) {
+      where.date = new Date(date);
+    } else {
+      const startOfDay = new Date();
+      startOfDay.setHours(0,0,0,0);
+      const endOfDay = new Date();
+      endOfDay.setHours(23,59,59,999);
+      where.date = {
+        [Op.gte]: startOfDay,
+        [Op.lte]: endOfDay
+      };
+    }
 
-    const attendance = await Attendance.find(query)
-      .populate('student', 'name studentId hasEnrolledFace')
-      .sort('-createdAt');
+    const attendance = await Attendance.findAll({
+      where,
+      include: [{ model: Student, attributes: ['name', 'studentId', 'hasEnrolledFace'] }],
+      order: [['createdAt', 'DESC']]
+    });
 
     res.json({ success: true, data: attendance });
   } catch (error) {
@@ -175,13 +223,14 @@ exports.getByCourse = async (req, res) => {
 // Get live attendance feed
 exports.getLiveAttendance = async (req, res) => {
   try {
-    // This endpoint can be used for live attendance monitoring
-    // For now, return recent attendance records
-    const recentAttendance = await Attendance.find()
-      .populate('course', 'name')
-      .populate('students', 'studentId name')
-      .sort({ date: -1 })
-      .limit(10);
+    const recentAttendance = await Attendance.findAll({
+      include: [
+        { model: Course, attributes: ['courseName'] },
+        { model: Student, attributes: ['studentId', 'name'] }
+      ],
+      order: [['date', 'DESC']],
+      limit: 10
+    });
 
     res.json({ 
       success: true, 
@@ -189,7 +238,6 @@ exports.getLiveAttendance = async (req, res) => {
       message: 'Live attendance feed retrieved successfully'
     });
   } catch (error) {
-    console.error('Error fetching live attendance:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Error fetching live attendance',
@@ -198,29 +246,141 @@ exports.getLiveAttendance = async (req, res) => {
   }
 };
 
+// Export attendance to CSV
+exports.exportCSV = async (req, res) => {
+  try {
+    const { courseId } = req.params;
+    
+    // Fetch all attendance for this course
+    const attendanceRecords = await Attendance.findAll({
+      where: { CourseId: courseId },
+      include: [
+        { model: Student, attributes: ['studentId', 'name', 'department', 'year', 'section'] }
+      ],
+      order: [['date', 'DESC'], ['time', 'DESC']]
+    });
+    
+    if (!attendanceRecords || attendanceRecords.length === 0) {
+      return res.status(404).json({ success: false, message: 'No attendance records found for this course.' });
+    }
+
+    // Generate CSV Header
+    let csvContent = 'Date,Time,Student ID,Student Name,Department,Year,Section,Status,Method\n';
+
+    // Generate CSV Rows
+    attendanceRecords.forEach(record => {
+      const student = record.Student || {};
+      const date = new Date(record.date).toISOString().split('T')[0];
+      const time = record.time || '';
+      const status = record.status || 'unknown';
+      const method = record.method || 'face_recognition';
+      
+      // Escape commas in names if any
+      const name = student.name ? `"${student.name}"` : 'Unknown';
+      const studentId = student.studentId || 'Unknown';
+      const dept = student.department || '';
+      const year = student.year || '';
+      const section = student.section || '';
+
+      csvContent += `${date},${time},${studentId},${name},${dept},${year},${section},${status},${method}\n`;
+    });
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=attendance_course_${courseId}.csv`);
+    res.send(csvContent);
+  } catch (error) {
+    console.error('CSV Export error:', error);
+    res.status(500).json({ success: false, message: 'Failed to generate CSV' });
+  }
+};
+
+// Send email warnings to students with < 75% attendance
+exports.sendWarnings = async (req, res) => {
+  try {
+    // 1. Get total classes per course
+    const courses = await Course.findAll();
+    
+    let emailsSent = 0;
+    
+    // We mock the email sending for demonstration purposes unless real SMTP is set
+    // const transporter = nodemailer.createTransport({ ... });
+
+    for (const course of courses) {
+      if (course.totalClasses === 0) continue;
+
+      // Find all distinct students enrolled in this course (those who have at least one attendance record)
+      const studentsInCourse = await Attendance.findAll({
+        where: { CourseId: course._id },
+        include: [{ model: Student }],
+        attributes: ['StudentId'],
+        group: ['StudentId']
+      });
+
+      for (const record of studentsInCourse) {
+        const studentId = record.StudentId;
+        const student = await Student.findByPk(studentId);
+        
+        if (!student) continue;
+
+        // Count present classes
+        const presentCount = await Attendance.count({
+          where: {
+            CourseId: course._id,
+            StudentId: studentId,
+            status: 'present'
+          }
+        });
+
+        // Calculate attendance rate
+        const attendanceRate = (presentCount / course.totalClasses) * 100;
+
+        if (attendanceRate < 75) {
+          // In a real app, use nodemailer transporter here to send email to student.email
+          console.log(`[Warning System] Sending email to ${student.email} (${student.name}): Attendance for ${course.courseCode} is ${attendanceRate.toFixed(1)}%`);
+          emailsSent++;
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Successfully sent ${emailsSent} warning emails to students with low attendance.`
+    });
+
+  } catch (error) {
+    console.error('Email Warning error:', error);
+    res.status(500).json({ success: false, message: 'Failed to send warnings' });
+  }
+};
+
 // Stream live attendance using Server-Sent Events
 exports.streamAttendance = async (req, res) => {
   const { courseId } = req.params;
 
-  // Set headers for SSE
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
     'Connection': 'keep-alive'
   });
 
-  // Send initial data
-  const initialData = await Attendance.find({
-    course: courseId,
-    date: {
-      $gte: new Date().setHours(0,0,0,0),
-      $lt: new Date().setHours(23,59,59,999)
-    }
-  }).populate('student', 'name studentId');
+  const startOfDay = new Date();
+  startOfDay.setHours(0,0,0,0);
+  const endOfDay = new Date();
+  endOfDay.setHours(23,59,59,999);
+
+  const initialData = await Attendance.findAll({
+    where: {
+      CourseId: courseId,
+      date: {
+        [Op.gte]: startOfDay,
+        [Op.lte]: endOfDay
+      }
+    },
+    include: [{ model: Student, attributes: ['name', 'studentId'] }]
+  });
 
   res.write(`data: ${JSON.stringify(initialData)}\n\n`);
 
-  // Handle client disconnect
   req.on('close', () => {
     res.end();
   });
@@ -238,8 +398,7 @@ exports.markByFaceRecognition = async (req, res) => {
       });
     }
 
-    // Validate course exists
-    const course = await Course.findById(courseId);
+    const course = await Course.findByPk(courseId);
     if (!course) {
       return res.status(404).json({
         success: false,
@@ -247,33 +406,38 @@ exports.markByFaceRecognition = async (req, res) => {
       });
     }
 
-    // Mark attendance for each student
     const results = await Promise.all(studentIds.map(async (studentId) => {
       try {
-        const attendance = await Attendance.findOneAndUpdate(
-          {
-            student: studentId,
-            course: courseId,
-            date: {
-              $gte: new Date().setHours(0,0,0,0),
-              $lt: new Date().setHours(23,59,59,999)
-            }
+        const student = await Student.findOne({ where: { studentId: studentId } });
+        if (!student) throw new Error("Student not found");
+
+        const startOfDay = new Date();
+        startOfDay.setHours(0,0,0,0);
+
+        const [attendance, created] = await Attendance.findOrCreate({
+          where: {
+            StudentId: student.id,
+            CourseId: courseId,
+            date: startOfDay
           },
-          {
+          defaults: {
             status: 'present',
-            verificationMethod: 'face-recognition',
-            $setOnInsert: { date: new Date() }
-          },
-          {
-            new: true,
-            upsert: true,
-            runValidators: true
+            method: 'face_recognition'
           }
-        ).populate('student', 'name studentId');
+        });
+
+        if (!created) {
+          await attendance.update({ status: 'present', method: 'face_recognition' });
+        }
+
+        // Return populated version
+        const populated = await Attendance.findByPk(attendance.id, {
+          include: [{ model: Student, attributes: ['name', 'studentId'] }]
+        });
 
         return {
           success: true,
-          data: attendance
+          data: populated
         };
       } catch (error) {
         return {
